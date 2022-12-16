@@ -3,10 +3,12 @@ use std::{
     ffi::OsStr,
     fs::File,
     io::{BufRead, BufReader},
+    ops::{Add, Sub},
     path::PathBuf,
 };
 
 use anyhow::{Context, Result};
+use nalgebra::{Point2, Scalar};
 
 const INPUTS_DIRECTORY: &str = "inputs";
 
@@ -43,4 +45,13 @@ pub fn input_lines() -> Result<Vec<String>> {
     let lines = lines?;
 
     Ok(lines)
+}
+
+pub fn manhattan_distance<T>(a: &Point2<T>, b: &Point2<T>) -> T
+where
+    T: Scalar + Copy + Ord + Sub<Output = T> + Add<Output = T>,
+{
+    let delta_x = if a.x >= b.x { a.x - b.x } else { b.x - a.x };
+    let delta_y = if a.y >= b.y { a.y - b.y } else { b.y - a.y };
+    delta_x + delta_y
 }

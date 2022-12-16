@@ -1,12 +1,12 @@
 use std::{
     collections::HashSet,
-    ops::{Add, Range, RangeInclusive, Sub},
+    ops::{Range, RangeInclusive},
 };
 
-use aoc2022::util::input_lines;
+use aoc2022::util::{input_lines, manhattan_distance};
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use nalgebra::{Point2, Scalar};
+use nalgebra::Point2;
 use regex::Regex;
 
 fn main() -> anyhow::Result<()> {
@@ -159,15 +159,6 @@ fn range_intersection(
     second: RangeInclusive<i64>,
 ) -> RangeInclusive<i64> {
     *first.start().max(second.start())..=*first.end().min(second.end())
-}
-
-fn manhattan_distance<T>(a: &Point2<T>, b: &Point2<T>) -> T
-where
-    T: Scalar + Copy + Ord + Sub<Output = T> + Add<Output = T>,
-{
-    let delta_x = if a.x >= b.x { a.x - b.x } else { b.x - a.x };
-    let delta_y = if a.y >= b.y { a.y - b.y } else { b.y - a.y };
-    delta_x + delta_y
 }
 
 fn parse_input() -> Vec<(Point2<i64>, Point2<i64>)> {
