@@ -1,27 +1,47 @@
+use std::{
+    cmp::Reverse,
+    num::NonZeroU32,
+    ops::{AddAssign, DivAssign, MulAssign},
+};
+
 use anyhow::{bail, Context, Result};
-use aoc2022::util::input_lines;
+use aoc2022::{
+    galois::{GFInt, GF},
+    util::input_lines,
+};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 
 fn main() -> Result<()> {
     let mut monkeys = parse_input()?;
 
-    for _ in 0..20 {
-        simulate1(&mut monkeys, 3);
-    }
-    monkeys.sort_by_key(|monkey| monkey.inspections);
-    let monkey_business =
-        monkeys[monkeys.len() - 2].inspections * monkeys[monkeys.len() - 1].inspections;
+    let monkey_business = simulate(&mut monkeys.clone(), NonZeroU32::new(3).unwrap(), 20);
     dbg!(monkey_business);
 
-    monkeys.sort_by_key(|monkey| monkey.id);
+    let divisors = monkeys
+        .iter()
+        .map(|monkey| monkey.test)
+        .unique()
+        .collect_vec();
+    for monkey in monkeys.iter_mut() {
+        for item in monkey.items.iter_mut() {
+            // There should only be one item, without any special handling
+            assert_eq!(item.values.len(), 1);
+            assert!(item.values[0].field().order().is_none());
 
-    for _ in 0..10000 {
-        simulate1(&mut monkeys, 1);
+            let value = item.values[0].value();
+
+            let new_values = divisors
+                .iter()
+                .map(|divisor| GF::new(Some(*divisor)).create_value(value))
+                .collect();
+
+            item.values = new_values;
+        }
     }
-    monkeys.sort_by_key(|monkey| monkey.inspections);
-    let monkey_business =
-        monkeys[monkeys.len() - 2].inspections * monkeys[monkeys.len() - 1].inspections;
+
+    let monkey_business = simulate(&mut monkeys, NonZeroU32::new(1).unwrap(), 10000);
     dbg!(monkey_business);
 
     Ok(())
@@ -30,9 +50,9 @@ fn main() -> Result<()> {
 #[derive(Debug, Clone)]
 struct Monkey {
     id: usize,
-    items: Vec<u32>,
+    items: Vec<Item>,
     operation: Operation,
-    test: u32,
+    test: NonZeroU32,
     target_true: usize,
     target_false: usize,
     inspections: usize,
@@ -45,7 +65,66 @@ enum Operation {
     MulSelf,
 }
 
-fn simulate1(monkeys: &mut [Monkey], divide_by: u32) {
+#[derive(Debug, Clone)]
+struct Item {
+    values: Vec<GFInt>,
+}
+
+impl Item {
+    fn square_assign(&mut self) {
+        for value in self.values.iter_mut() {
+            value.square_assign();
+        }
+    }
+}
+
+impl AddAssign<u32> for Item {
+    fn add_assign(&mut self, rhs: u32) {
+        for value in self.values.iter_mut() {
+            *value += value.field().create_value(rhs);
+        }
+    }
+}
+
+impl MulAssign<u32> for Item {
+    fn mul_assign(&mut self, rhs: u32) {
+        for value in self.values.iter_mut() {
+            *value *= value.field().create_value(rhs);
+        }
+    }
+}
+
+impl DivAssign<u32> for Item {
+    fn div_assign(&mut self, rhs: u32) {
+        for value in self.values.iter_mut() {
+            *value = value
+                .field()
+                .create_value(value.value().checked_div(rhs).unwrap());
+        }
+    }
+}
+
+fn simulate(monkeys: &mut [Monkey], divide_by: NonZeroU32, iterations: u32) -> usize {
+    for _ in 0..iterations {
+        simulate1(monkeys, divide_by);
+    }
+
+    monkeys.sort_by_key(|monkey| Reverse(monkey.inspections));
+
+    let first = {
+        monkeys.select_nth_unstable_by_key(0, |monkey| Reverse(monkey.inspections));
+        monkeys[0].inspections
+    };
+
+    let second = {
+        monkeys.select_nth_unstable_by_key(1, |monkey| Reverse(monkey.inspections));
+        monkeys[1].inspections
+    };
+
+    first * second
+}
+
+fn simulate1(monkeys: &mut [Monkey], divide_by: NonZeroU32) {
     for index in 0..monkeys.len() {
         let monkey = &monkeys[index];
         assert!(monkey.id == index);
@@ -60,15 +139,28 @@ fn simulate1(monkeys: &mut [Monkey], divide_by: u32) {
         };
         let monkey = std::mem::replace(&mut monkeys[index], replacement);
 
-        for item in monkey.items {
-            let item = match monkey.operation {
-                Operation::MulConst(val) => item * val,
-                Operation::AddConst(val) => item + val,
-                Operation::MulSelf => item * item,
+        for mut item in monkey.items {
+            match monkey.operation {
+                Operation::MulConst(val) => item *= val,
+                Operation::AddConst(val) => item += val,
+                Operation::MulSelf => item.square_assign(),
             };
-            let item = item / divide_by;
+            item /= divide_by.get();
 
-            let target = if item % monkey.test == 0 {
+            let should_branch = if let Some(value) = item
+                .values
+                .iter()
+                .find(|item| item.field().order() == Some(monkey.test))
+            {
+                value.value() == 0
+            } else {
+                assert_eq!(item.values.len(), 1);
+                assert!(item.values[0].field().order().is_none());
+
+                item.values[0].value() % monkey.test == 0
+            };
+
+            let target = if should_branch {
                 monkey.target_true
             } else {
                 monkey.target_false
@@ -113,7 +205,11 @@ fn parse_input() -> Result<Vec<Monkey>> {
                 .unwrap()
                 .as_str()
                 .split(", ")
-                .map(|s| Ok(s.parse()?))
+                .map(|s| {
+                    Ok(Item {
+                        values: vec![GF::new(None).create_value(s.parse()?)],
+                    })
+                })
                 .collect::<Result<_>>()?;
 
             lazy_static! {
