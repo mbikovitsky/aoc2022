@@ -22,6 +22,9 @@ fn main() -> Result<()> {
     let most_pressure = compute_most_pressure(&valves, 30, "AA");
     dbg!(most_pressure);
 
+    let most_pressure_two_agents = compute_most_pressure_two_agents(&valves, 26, "AA");
+    dbg!(most_pressure_two_agents);
+
     Ok(())
 }
 
@@ -77,6 +80,106 @@ fn compute_most_pressure(valves: &[Valve], total_time: u32, start_valve: &str) -
             let new_state = State {
                 time: new_time,
                 position: edge.target(),
+                turned_on_valves: current.turned_on_valves | (1 << edge.target().index()),
+                utility: current.utility + (total_time - new_time) * flow_rate,
+            };
+
+            to_visit.push(new_state);
+        }
+    }
+
+    best_utility
+}
+
+fn compute_most_pressure_two_agents(valves: &[Valve], total_time: u32, start_valve: &str) -> u32 {
+    // First, build a map of the tunnel system
+    let (map, start) = compress_valve_map(valves, start_valve);
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct State {
+        time1: u32,
+        position1: NodeIndex,
+        time2: u32,
+        position2: NodeIndex,
+        turned_on_valves: u64,
+        utility: u32, // How much total pressure will be released when time runs out
+    }
+
+    let mut to_visit = vec![State {
+        time1: 0,
+        position1: start,
+        time2: 0,
+        position2: start,
+        turned_on_valves: 0,
+        utility: 0,
+    }];
+
+    let mut discovered = HashSet::new();
+
+    let mut best_utility = 0;
+
+    while let Some(current) = to_visit.pop() {
+        if !discovered.insert(current) {
+            continue;
+        }
+
+        best_utility = best_utility.max(current.utility);
+
+        // Find valves the first agent can turn on
+        for edge in map.edges_directed(current.position1, Direction::Outgoing) {
+            // Is this valve already turned on?
+            if current.turned_on_valves & (1 << edge.target().index()) != 0 {
+                continue;
+            }
+
+            // No sense in turning on valves that don't contribute anything
+            let flow_rate = *map.node_weight(edge.target()).unwrap();
+            if flow_rate == 0 {
+                continue;
+            }
+
+            // New time is after moving to the new valve and turning it on
+            let new_time = current.time1 + edge.weight() + 1;
+            if new_time >= total_time {
+                continue;
+            }
+
+            let new_state = State {
+                time1: new_time,
+                position1: edge.target(),
+                time2: current.time2,
+                position2: current.position2,
+                turned_on_valves: current.turned_on_valves | (1 << edge.target().index()),
+                utility: current.utility + (total_time - new_time) * flow_rate,
+            };
+
+            to_visit.push(new_state);
+        }
+
+        // Find valves the second agent can turn on
+        for edge in map.edges_directed(current.position2, Direction::Outgoing) {
+            // Is this valve already turned on?
+            if current.turned_on_valves & (1 << edge.target().index()) != 0 {
+                continue;
+            }
+
+            // No sense in turning on valves that don't contribute anything
+            let flow_rate = *map.node_weight(edge.target()).unwrap();
+            if flow_rate == 0 {
+                continue;
+            }
+
+            // New time is after moving to the new valve and turning it on
+            let new_time = current.time2 + edge.weight() + 1;
+            if new_time >= total_time {
+                continue;
+            }
+
+            let new_state = State {
+                time1: current.time1,
+                position1: current.position1,
+                time2: new_time,
+                position2: edge.target(),
                 turned_on_valves: current.turned_on_valves | (1 << edge.target().index()),
                 utility: current.utility + (total_time - new_time) * flow_rate,
             };
