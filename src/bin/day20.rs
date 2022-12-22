@@ -4,24 +4,40 @@ use anyhow::Result;
 use aoc2022::util::input_lines;
 use itertools::Itertools;
 
+const DECRYPTION_KEY: i64 = 811589153;
+
 fn main() -> Result<()> {
     let numbers = parse_input()?;
 
-    let mut mixed_numbers = mix(&numbers).cycle();
-    mixed_numbers.find(|&value| value == 0).unwrap();
-    let first = mixed_numbers.nth(1000 - 1).unwrap();
-    let second = mixed_numbers.nth(1000 - 1).unwrap();
-    let third = mixed_numbers.nth(1000 - 1).unwrap();
-    let result = first + second + third;
-    dbg!(result);
+    let (a, b, c) = compute_coordinates(&numbers, 1);
+    dbg!(a + b + c);
+
+    let mut numbers = numbers;
+    for number in numbers.iter_mut() {
+        *number *= DECRYPTION_KEY;
+    }
+    let (a, b, c) = compute_coordinates(&numbers, 10);
+    dbg!(a + b + c);
 
     Ok(())
 }
 
-fn mix(numbers: &[i32]) -> impl Iterator<Item = i32> + Clone {
+fn compute_coordinates(numbers: &[i64], rounds: u32) -> (i64, i64, i64) {
+    let mut mixed_numbers = mix(numbers, rounds).cycle();
+
+    mixed_numbers.find(|&value| value == 0).unwrap();
+
+    let first = mixed_numbers.nth(1000 - 1).unwrap();
+    let second = mixed_numbers.nth(1000 - 1).unwrap();
+    let third = mixed_numbers.nth(1000 - 1).unwrap();
+
+    (first, second, third)
+}
+
+fn mix(numbers: &[i64], rounds: u32) -> impl Iterator<Item = i64> + Clone {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct Entry {
-        value: i32,
+        value: i64,
         next: usize,
         prev: usize,
     }
@@ -83,20 +99,20 @@ fn mix(numbers: &[i32]) -> impl Iterator<Item = i32> + Clone {
         list[next].prev = prev;
     }
 
-    for entry in 0..list.len() {
-        if list[entry].value == 0 {
-            continue;
+    for _ in 0..rounds {
+        for entry in 0..list.len() {
+            remove(&mut list, entry);
+
+            let after = if list[entry].value < 0 {
+                let count: usize = list[entry].value.checked_neg().unwrap().try_into().unwrap();
+                prev(&list, list[entry].prev, count % (list.len() - 1))
+            } else {
+                let count: usize = list[entry].value.try_into().unwrap();
+                next(&list, list[entry].prev, count % (list.len() - 1))
+            };
+
+            insert_after(&mut list, entry, after);
         }
-
-        remove(&mut list, entry);
-
-        let after = if list[entry].value < 0 {
-            prev(&list, entry, (-list[entry].value + 1).try_into().unwrap())
-        } else {
-            next(&list, entry, list[entry].value.try_into().unwrap())
-        };
-
-        insert_after(&mut list, entry, after);
     }
 
     let mut remaining = list.len();
@@ -113,6 +129,6 @@ fn mix(numbers: &[i32]) -> impl Iterator<Item = i32> + Clone {
     })
 }
 
-fn parse_input() -> Result<Vec<i32>> {
+fn parse_input() -> Result<Vec<i64>> {
     input_lines()?.into_iter().map(|s| Ok(s.parse()?)).collect()
 }
