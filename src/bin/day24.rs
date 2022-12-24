@@ -10,8 +10,26 @@ use nalgebra::{Point2, Vector2};
 fn main() -> Result<()> {
     let map = parse_input()?;
 
-    let shortest_path = map.find_shortest_path().context("Didn't find solution")?;
-    dbg!(shortest_path);
+    let first_leg = map
+        .find_shortest_path()
+        .context("Didn't find solution for first leg")?;
+    dbg!(first_leg);
+
+    let second_leg = map
+        .flip()
+        .at_time(first_leg)
+        .find_shortest_path()
+        .context("Didn't find solution for second leg")?;
+    dbg!(second_leg);
+
+    let third_leg = map
+        .at_time(first_leg + second_leg)
+        .find_shortest_path()
+        .context("Didn't find solution for third leg")?;
+    dbg!(third_leg);
+
+    let total_time = first_leg + second_leg + third_leg;
+    dbg!(total_time);
 
     Ok(())
 }
@@ -35,6 +53,17 @@ enum Direction {
     Down,
     Left,
     Right,
+}
+
+impl Direction {
+    fn flip(&self) -> Self {
+        match self {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
 }
 
 impl Map {
@@ -222,6 +251,38 @@ impl Map {
             new_position.x.try_into().unwrap(),
             new_position.y.try_into().unwrap(),
         )
+    }
+
+    fn flip(&self) -> Self {
+        Self {
+            blizzards: self
+                .blizzards
+                .iter()
+                .map(|&blizzard| {
+                    let direction = blizzard.direction.flip();
+                    let initial = Point2::new(
+                        self.width - 1 - blizzard.initial.x,
+                        self.height - 1 - blizzard.initial.y,
+                    );
+                    Blizzard { initial, direction }
+                })
+                .collect(),
+            width: self.width,
+            height: self.height,
+        }
+    }
+
+    fn at_time(&self, time: u32) -> Self {
+        Self {
+            blizzards: (0..self.blizzards.len())
+                .map(|blizzard| Blizzard {
+                    initial: self.position_at_time(blizzard, time),
+                    direction: self.blizzards[blizzard].direction,
+                })
+                .collect(),
+            width: self.width,
+            height: self.height,
+        }
     }
 }
 
