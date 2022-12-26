@@ -8,8 +8,11 @@ use nalgebra::{Point2, Vector2};
 fn main() -> Result<()> {
     let mut positions = parse_input();
 
-    let empty_tiles = compute_empty_tiles(&mut positions, 10);
+    let empty_tiles = compute_empty_tiles(&mut positions.clone(), 10);
     dbg!(empty_tiles);
+
+    let rounds_until_steady = simulate_until_steady_state(&mut positions);
+    dbg!(rounds_until_steady + 1);
 
     Ok(())
 }
@@ -41,6 +44,17 @@ fn compute_empty_tiles(positions: &mut HashSet<Point2<i32>>, rounds: usize) -> u
     let total_tiles = width * height;
     let occupied_tiles: u32 = positions.len().try_into().unwrap();
     total_tiles - occupied_tiles
+}
+
+fn simulate_until_steady_state(positions: &mut HashSet<Point2<i32>>) -> usize {
+    for round in 0.. {
+        let previous = positions.clone();
+        simulate1(positions, round);
+        if &previous == positions {
+            return round;
+        }
+    }
+    unreachable!()
 }
 
 fn simulate1(positions: &mut HashSet<Point2<i32>>, round: usize) {
